@@ -201,3 +201,18 @@ When you remove the integration via the UI, `async_remove_entry` cleans up the p
 ## License
 
 This integration is for personal use. The SJ Water Hub API is not publicly documented — reverse-engineered from the web portal.
+
+## Fork additions: billing and meter-read sensors
+
+This fork adds five sensors fed by the portal's "Download Spreadsheet" exports
+(`billing.py`, `parsing.py`, plus `async_get_spreadsheet` / `async_get_billing_data` in `api.py`):
+
+| Sensor | Unit |
+|---|---|
+| Latest Bill | USD |
+| Last Meter Read Usage | CCF |
+| Average Daily Use | gal/d |
+| Cost per CCF | USD/CCF |
+| Bills Last 6 Cycles | USD |
+
+They are polled every 6 hours and never affect the existing usage sensors if the download fails.

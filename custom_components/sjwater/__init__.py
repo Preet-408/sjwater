@@ -5,6 +5,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import SJWaterHubApiClient
+from .billing import SJWaterHubBillingCoordinator
 from .coordinator import SJWaterHubCoordinator
 from .const import DOMAIN, CONF_USERNAME, CONF_PASSWORD
 
@@ -23,6 +24,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     coordinator = SJWaterHubCoordinator(hass, entry, client)
+    coordinator.billing = SJWaterHubBillingCoordinator(hass, entry, client)
 
     # 1. Restore persistent state (running sum from disk/recorder) BEFORE
     #    the first data fetch so _current_sum is pre-populated correctly.
@@ -38,6 +40,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # 4. Forward the config entry to the sensor platform to create entities.
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # 5. Billing / meter-read sensors (extension). Failure here must never break
+    #    the existing usage sensors, so use a plain refresh, not first_refresh.
+    await coordinator.billing.async_refresh()
 
     return True
 

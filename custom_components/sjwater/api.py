@@ -193,6 +193,49 @@ class SJWaterHubApiClient:
             raise InvalidAuth("Invalid username or password")
         return True
 
+    async def async_get_spreadsheet(self, params: dict) -> str:
+        """Download one of the portal's CSV exports ("Download Spreadsheet").
+
+        The export endpoint answers with the login page (HTML) when the session
+        has expired, so detect that, log in again once, and retry.
+        """
+        url = "https://www.sjwaterhub.com/DownloadSpreadsheet"
+        headers = {
+            "User-Agent": BROWSER_USER_AGENT,
+            "Accept": "text/csv,application/csv,text/plain,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.sjwaterhub.com/BillingHistory",
+            "Origin": "https://www.sjwaterhub.com",
+        }
+        for attempt in range(2):
+            if not self._token or attempt == 1:
+                if not await self.async_login():
+                    raise CannotConnect("Login failed while downloading spreadsheet")
+            # The portal's own "Download Spreadsheet" button POSTs to this URL
+            # with the session Token as a query parameter.
+            query = {**params, "Token": self._token}
+            async with self.session.post(url, params=query, headers=headers, data={}) as resp:
+                if resp.status in (401, 403):
+                    _LOGGER.debug("Spreadsheet request rejected (%s), re-authenticating", resp.status)
+                    self._token = None
+                    continue
+                resp.raise_for_status()
+                text = await resp.text()
+            if text.lstrip().startswith("<"):
+                _LOGGER.debug("Spreadsheet request returned HTML (session expired?)")
+                self._token = None
+                continue
+            return text
+        raise CannotConnect("Spreadsheet download returned a web page, not a CSV")
+
+    async def async_get_billing_data(self) -> tuple[str, str]:
+        """Return (bill history CSV, usage history CSV) as text."""
+        bills = await self.async_get_spreadsheet({"type": "BillingUsageHistory"})
+        usage = await self.async_get_spreadsheet(
+            {"type": "BillingUsageHistory", "transactiontype": "usage", "servicetype": "W"}
+        )
+        return bills, usage
+
     async def async_get_data(self, start_date_query: str = "", end_date_query: str = "", account_number: str = None) -> dict:
         """Fetch data from the water company's RequestBroker API."""
 
