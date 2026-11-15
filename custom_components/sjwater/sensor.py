@@ -43,6 +43,55 @@ async def async_setup_entry(hass, entry, async_add_entities):
         SJWaterHubSensor(coordinator),
         SJWaterHubDailySensor(coordinator)
     ])
+    billing = getattr(coordinator, "billing", None)
+    if billing is not None:
+        async_add_entities(
+            SJWaterHubBillingSensor(coordinator, billing, *spec)
+            for spec in BILLING_SENSORS
+        )
+
+
+# (key, name, unit, device_class, icon, attribute keys to expose)
+BILLING_SENSORS = [
+    ("latest_bill", "Latest Bill", "USD", SensorDeviceClass.MONETARY, "mdi:receipt-text", ("latest_bill_date",)),
+    ("last_read_ccf", "Last Meter Read Usage", "CCF", None, "mdi:counter", ("last_read_date", "last_read_days")),
+    ("gallons_per_day", "Average Daily Use", "gal/d", None, "mdi:water-percent", ("last_read_date",)),
+    ("cost_per_ccf", "Cost per CCF", "USD/CCF", None, "mdi:cash", ("latest_bill_date",)),
+    ("bills_last_6", "Bills Last 6 Cycles", "USD", SensorDeviceClass.MONETARY, "mdi:cash-multiple", ("bills_count",)),
+]
+
+
+class SJWaterHubBillingSensor(CoordinatorEntity, SensorEntity):
+    """Bill / meter-read values from the portal's spreadsheet exports."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, usage_coordinator, billing_coordinator, key, name, unit, device_class, icon, attrs):
+        super().__init__(billing_coordinator)
+        acct = _account_id(usage_coordinator.client.username)
+        self._key = key
+        self._attrs = attrs
+        self._acct = acct
+        self._attr_name = name
+        self._attr_native_unit_of_measurement = unit
+        self._attr_device_class = device_class
+        self._attr_icon = icon
+        self._attr_unique_id = f"sjwater_{acct}_{key}"
+        self.entity_id = f"sensor.sjwater_{acct}_{key}"
+
+    @property
+    def device_info(self):
+        return {"identifiers": {(DOMAIN, self._acct)}, "name": "SJ Water Hub"}
+
+    @property
+    def native_value(self):
+        data = self.coordinator.data or {}
+        return data.get(self._key)
+
+    @property
+    def extra_state_attributes(self):
+        data = self.coordinator.data or {}
+        return {k: data[k] for k in self._attrs if k in data}
 
 class SJWaterHubSensor(CoordinatorEntity, SensorEntity):
     """Representation of the Water Meter."""
